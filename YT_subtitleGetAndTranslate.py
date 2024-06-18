@@ -3,6 +3,11 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from googletrans import Translator
 from datetime import timedelta
 import re
+import time
+import nltk
+
+#nltk.download('punkt')
+from nltk.tokenize import sent_tokenize
 
 def format_time(seconds):
     """
@@ -20,8 +25,24 @@ def sanitize_filename(filename):
     """
     return re.sub(r'[\/:*?"<>|]', '_', filename)
 
+def correct_subtitle_text(text):
+    """
+    Corrects common errors in subtitles.
+    """
+    corrections = {
+        '灰': 'ハイ',  # 將"灰"替換為ハイ"
+        'OK': 'おっけー',  # 將"ねOK"替換為"ね、おっけー"
+        '君': 'きみ'  # 將"君"替換為"きみ"
+        # 可以添加更多的替换項，例如：
+        # '錯誤的術語': '正確的術語'
+    }
+    for wrong, correct in corrections.items():
+        text = text.replace(wrong, correct)
+    return text
+
 # 輸入影片URL
-video_url = 'https://www.youtube.com/watch?v=d3UTywBDSW4'
+video_url = 'https://www.youtube.com/watch?v=Or4T8V2uYEc'
+
 
 # 獲取影片信息
 yt = YouTube(video_url)
@@ -38,23 +59,34 @@ transcript_data = transcript.fetch()
 # 提取所有需要翻譯的文本
 texts_to_translate = [entry['text'] for entry in transcript_data]
 
+# 使用nltk分割句子
+split_sentences = []
+for text in texts_to_translate:
+    sentences = sent_tokenize(text)
+    split_sentences.extend(sentences)
+
+# 对分割后的句子进行文本校正
+corrected_sentences = [correct_subtitle_text(sentence) for sentence in split_sentences]
+
 # 初始化翻譯器
 translator = Translator()
 
 # 嘗試逐條翻譯文本
 translated_texts = []
-for text in texts_to_translate:
+for text in corrected_sentences:
     try:
-        translated = translator.translate(text, dest='zh-tw')
+        translated = translator.translate(text, dest='zh-TW')
         if translated and translated.text:
             translated_texts.append(translated.text)
         else:
-            translated_texts.append(text)
-            print(f"翻譯失敗，API返回None，原文保留: {text}")
+            corrected_text = correct_subtitle_text(text)
+            translated_texts.append(corrected_text)
+            print(f"翻譯失敗，API返回None，原文保留: {corrected_text}")
     except Exception as e:
-        translated_texts.append(text)  # 如果翻譯失敗，保留原文本
-        print(f"翻譯 '{text}' 失敗: {e}")
-    
+        corrected_text = correct_subtitle_text(text)
+        translated_texts.append(corrected_text)  # 如果翻譯失敗，保留校正後的文本
+        print(f"翻譯 '{corrected_text}' 失敗: {e}")
+    time.sleep(5)  # 添加5秒延遲
 
 # 將翻譯後的文本與時間戳配對
 translated_transcript = []
